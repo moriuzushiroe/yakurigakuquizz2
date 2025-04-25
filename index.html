@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>正誤クイズアプリ</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .hidden { display: none; }
+    table, th, td { border: 1px solid black; border-collapse: collapse; text-align: center; }
+    th, td { padding: 8px; }
+    button { margin: 5px; }
+  </style>
+</head>
+<body>
+  <!-- 入力画面 -->
+  <div id="input-screen">
+    <h2>問題文の入力</h2>
+    <p>正しい文（改行ごとに1つ）:</p>
+    <textarea id="true-list" rows="10" cols="60"></textarea>
+    <p>誤った文（改行ごとに1つ）:</p>
+    <textarea id="false-list" rows="10" cols="60"></textarea>
+    <br>
+    <button onclick="generateQuestions()">問題を生成</button>
+  </div>
+
+  <!-- クイズ画面 -->
+  <div id="quiz-screen" class="hidden">
+    <h2>問題 <span id="question-counter"></span></h2>
+    <div id="question-box"></div>
+    <table id="answer-table">
+      <thead>
+        <tr><th></th><th>①</th><th>②</th><th>③</th><th>④</th><th>⑤</th><th>⑥</th><th>⑦</th><th>⑧</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>a.</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>b.</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+        <tr><td>c.</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+    <br>
+    <button onclick="prevQuestion()">前の問題</button>
+    <button onclick="nextQuestion()">次の問題</button>
+    <button onclick="showExplanation()">解説を見る</button>
+    <label><input type="checkbox" id="mark-question"> この問題をチェック</label>
+    <button onclick="showMarkedQuestions()">チェックした問題のみ出題</button>
+    <p>正答率: <span id="accuracy">0%</span></p>
+    <div id="explanation" class="hidden"></div>
+  </div>
+
+  <script>
+    let trueList = [], falseList = [], questions = [], currentIndex = 0;
+    let marked = [], userAnswers = [];
+
+    function generateQuestions() {
+      const trueText = document.getElementById('true-list').value.trim();
+      const falseText = document.getElementById('false-list').value.trim();
+      trueList = trueText.split('\n').map(s => s.trim()).filter(Boolean);
+      falseList = falseText.split('\n').map(s => s.trim()).filter(Boolean);
+
+      const total = Math.max(trueList.length, falseList.length);
+      questions = [];
+
+      for (let i = 0; i < total; i++) {
+        const trueCount = Math.floor(Math.random() * 3) + 1;
+        const falseCount = 3 - trueCount;
+
+        const selectedTrue = shuffle(trueList).slice(0, trueCount);
+        const selectedFalse = shuffle(falseList).slice(0, falseCount);
+        const all = shuffle([...selectedTrue.map(t => ({text: t, correct: true})), ...selectedFalse.map(f => ({text: f, correct: false}))]);
+
+        const answerKey = all.map(a => a.correct ? '○' : '×');
+        const choices = generateAllCombinations(3).map(comb => comb.map(b => b ? '○' : '×'));
+
+        questions.push({
+          options: all,
+          correct: answerKey,
+          choices,
+        });
+      }
+
+      marked = Array(questions.length).fill(false);
+      userAnswers = Array(questions.length).fill(null);
+      currentIndex = 0;
+      document.getElementById('input-screen').classList.add('hidden');
+      document.getElementById('quiz-screen').classList.remove('hidden');
+      renderQuestion();
+    }
+
+    function renderQuestion() {
+      const q = questions[currentIndex];
+      document.getElementById('question-counter').innerText = `${currentIndex + 1} / ${questions.length}`;
+
+      const qbox = document.getElementById('question-box');
+      qbox.innerHTML = '';
+      q.options.forEach((opt, i) => {
+        const line = document.createElement('div');
+        line.innerText = `${String.fromCharCode(97 + i)}. ${opt.text}`;
+        qbox.appendChild(line);
+      });
+
+      const tbody = document.getElementById('answer-table').getElementsByTagName('tbody')[0];
+      while (tbody.rows.length > 3) tbody.deleteRow(3); // remove extra rows if any
+
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 8; c++) {
+          const cell = tbody.rows[r].cells[c + 1];
+          cell.innerText = q.choices[c][r];
+          cell.style.cursor = 'pointer';
+          cell.onclick = () => checkAnswer(q.choices[c]);
+        }
+      }
+
+      document.getElementById('mark-question').checked = marked[currentIndex];
+      document.getElementById('explanation').classList.add('hidden');
+      document.getElementById('explanation').innerText = '';
+      updateAccuracy();
+    }
+
+    function checkAnswer(answer) {
+      const correct = questions[currentIndex].correct;
+      const isCorrect = answer.every((val, i) => val === correct[i]);
+      alert(isCorrect ? '正解！' : '不正解');
+      userAnswers[currentIndex] = isCorrect;
+      updateAccuracy();
+    }
+
+    function prevQuestion() {
+      if (currentIndex > 0) currentIndex--;
+      renderQuestion();
+    }
+
+    function nextQuestion() {
+      if (currentIndex < questions.length - 1) currentIndex++;
+      renderQuestion();
+    }
+
+    function showExplanation() {
+      const q = questions[currentIndex];
+      const explanation = document.getElementById('explanation');
+      const text = q.options.map((opt, i) => `${String.fromCharCode(97 + i)}: ${opt.correct ? "正しい文" : "誤った文"}`).join('\n');
+      explanation.innerText = text;
+      explanation.classList.remove('hidden');
+    }
+
+    function showMarkedQuestions() {
+      const markedQuestions = questions.map((q, i) => marked[i] ? q : null).filter(Boolean);
+      if (markedQuestions.length === 0) {
+        alert("チェックされた問題がありません");
+        return;
+      }
+      questions = markedQuestions;
+      currentIndex = 0;
+      renderQuestion();
+    }
+
+    document.getElementById('mark-question').addEventListener('change', function() {
+      marked[currentIndex] = this.checked;
+    });
+
+    function updateAccuracy() {
+      const answered = userAnswers.filter(v => v !== null);
+      const correct = answered.filter(v => v === true).length;
+      const percent = answered.length ? Math.round((correct / answered.length) * 100) : 0;
+      document.getElementById('accuracy').innerText = `${percent}%`;
+    }
+
+    function shuffle(arr) {
+      return [...arr].sort(() => Math.random() - 0.5);
+    }
+
+    function generateAllCombinations(n) {
+      const results = [];
+      for (let i = 0; i < (1 << n); i++) {
+        const combo = [];
+        for (let j = 0; j < n; j++) {
+          combo.push(Boolean(i & (1 << j)));
+        }
+        results.push(combo);
+      }
+      return results;
+    }
+  </script>
+</body>
+</html>
